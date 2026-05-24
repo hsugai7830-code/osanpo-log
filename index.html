@@ -286,9 +286,18 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
       <input class="form-input" id="spot-gmap" placeholder="https://maps.google.com/..." autocomplete="off" inputmode="url"/>
     </div>
     <div class="form-block">
-      <label class="form-label">Plus Code（任意）</label>
-      <input class="form-input" id="spot-pluscode" placeholder="例）8Q7X+MP 東京都" autocomplete="off"/>
-      <div style="font-size:11px;color:var(--mid);margin-top:5px">Googleマップのお店ページ→「共有」→「Plus Codeをコピー」</div>
+      <label class="form-label">住所（任意）</label>
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <input class="form-input" id="spot-address" placeholder="例）日本、〒186-0002 東京都国立市東２丁目２５−８" autocomplete="off" style="flex:1"/>
+        <button onclick="geocodeAddress()" style="padding:12px 14px;background:var(--sage);color:white;border:none;border-radius:14px;font-family:'Zen Maru Gothic',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">検索</button>
+      </div>
+      <div style="font-size:11px;color:var(--mid);margin-top:5px">Googleマップのお店ページの住所をそのままコピペしてください</div>
+      <div id="geocode-status" style="font-size:11px;margin-top:5px;display:none"></div>
+    </div>
+    <div class="form-block" id="pin-map-block" style="display:none">
+      <label class="form-label">📍 地図でピンを微調整（任意）</label>
+      <div id="pin-map" style="height:200px;border-radius:14px;overflow:hidden;border:1.5px solid var(--sand)"></div>
+      <div style="font-size:11px;color:var(--mid);margin-top:5px">地図をタップして正確な位置に調整できます</div>
     </div>
     <div class="btn-row">
       <button class="btn-cancel" onclick="closeSpotModal()">キャンセル</button>
@@ -355,7 +364,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 // ============================================================
 //  CONFIG
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzV-u6xlGhcWABYQQyx3PUKfXSF1n6pmyJBsyBEpDpjZhivwMQxxKOks76yUzBA7IEYdw/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzU5Wy8diN2HgGE9SnXL_wU3w0HmxirGZv_OfWlx4ikHVnRhL2KWVrLyzWaIHXwyk-K/exec';
 const STEPS_GOAL = 20000;
 
 // ============================================================
@@ -373,66 +382,75 @@ function categoryEmoji(catId) {
   return CATEGORIES.find(c => c.id === catId)?.emoji || '📍';
 }
 
-// Plus Code → 座標変換
-// Open Location Code (Plus Code) のシンプルなデコーダー
-function decodePlusCode(code) {
+// ============================================================
+//  住所ジオコーディング (Nominatim)
+// ============================================================
+let geocodedLatlng = null;
+let pinnedLatlng = null;
+let pinMap = null;
+let pinMarker = null;
+
+// Googleマップの住所形式をNominatim向けに整形
+function cleanAddress(addr) {
+  return addr
+    .replace(/^日本[、,，]\s*/, '')   // 先頭の「日本、」を除去
+    .replace(/〒\d{3}-\d{4}\s*/, '') // 郵便番号を除去
+    .replace(/[−ー―]/g, '-')         // 全角ハイフンを半角に
+    .trim();
+}
+
+async function geocodeAddress() {
+  const raw = document.getElementById('spot-address').value.trim();
+  if (!raw) { showToast('住所を入力してください'); return; }
+
+  const status = document.getElementById('geocode-status');
+  status.style.display = 'block';
+  status.style.color = 'var(--mid)';
+  status.textContent = '🔍 検索中...';
+
+  const query = cleanAddress(raw);
   try {
-    // "8Q7XMPF5+3J 東京都" → "8Q7XMPF5+3J" を抽出
-    const match = code.trim().match(/([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3})/i);
-    if (!match) return null;
-    const clean = match[1].toUpperCase();
-
-    const ALPHABET = '23456789CFGHJMPQRVWX';
-    const ENCODING_BASE = 20;
-    const PAIR_CODE_LENGTH = 10;
-    const CODE_ALPHABET = ALPHABET;
-
-    // + の位置を確認
-    const plusPos = clean.indexOf('+');
-    if (plusPos < 0) return null;
-
-    const fullCode = plusPos < 8 ? clean.padEnd(8, '0').replace('+','') + (clean.includes('+') ? clean.slice(plusPos+1) : '') : clean;
-
-    // 正規化：+を除いた文字列で処理
-    const stripped = clean.replace('+', '');
-    const padded = stripped.padEnd(8, '0');
-
-    let lat = -90, lng = -180;
-    let latHi = 90, lngHi = 180;
-
-    // 最初の4文字（ペア）
-    for (let i = 0; i < Math.min(4, Math.floor(padded.length / 2)); i++) {
-      const latChar = padded[i * 2];
-      const lngChar = padded[i * 2 + 1];
-      const latIdx = CODE_ALPHABET.indexOf(latChar);
-      const lngIdx = CODE_ALPHABET.indexOf(lngChar);
-      if (latIdx < 0 || lngIdx < 0) return null;
-
-      const div = Math.pow(ENCODING_BASE, 3 - i);
-      lat += latIdx * div * 180 / Math.pow(ENCODING_BASE, 4);
-      lng += lngIdx * div * 360 / Math.pow(ENCODING_BASE, 4);
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&accept-language=ja`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'ja' } });
+    const data = await res.json();
+    if (data.length === 0) {
+      status.style.color = 'var(--terra)';
+      status.textContent = '❌ 場所が見つかりませんでした。住所を確認してください。';
+      return;
     }
+    const lat = parseFloat(data[0].lat);
+    const lng = parseFloat(data[0].lon);
+    geocodedLatlng = [lat, lng];
+    pinnedLatlng = [lat, lng];
+    status.style.color = 'var(--sage)';
+    status.textContent = `✅ 見つかりました！地図で微調整できます`;
+    showPinMap(lat, lng);
+  } catch(e) {
+    status.style.color = 'var(--terra)';
+    status.textContent = '❌ 検索に失敗しました。通信状況を確認してください。';
+  }
+}
 
-    // グリッド部分（+の後）
-    const suffix = clean.slice(plusPos + 1);
-    if (suffix.length >= 2) {
-      const latDiv = Math.pow(ENCODING_BASE, -1);
-      const lngDiv = Math.pow(ENCODING_BASE, -1);
-      const latIdx = CODE_ALPHABET.indexOf(suffix[0]);
-      const lngIdx = CODE_ALPHABET.indexOf(suffix[1]);
-      if (latIdx >= 0 && lngIdx >= 0) {
-        lat += latIdx * latDiv * 180 / Math.pow(ENCODING_BASE, 4) / ENCODING_BASE;
-        lng += lngIdx * lngDiv * 360 / Math.pow(ENCODING_BASE, 4) / ENCODING_BASE;
-      }
-    }
+function showPinMap(lat, lng) {
+  const block = document.getElementById('pin-map-block');
+  block.style.display = 'block';
 
-    // 中心点
-    const latCenter = lat + (latHi - lat) / ENCODING_BASE / ENCODING_BASE;
-    const lngCenter = lng + (lngHi - lng) / ENCODING_BASE / ENCODING_BASE;
+  if (!pinMap) {
+    pinMap = L.map('pin-map', { zoomControl: true, attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(pinMap);
+    pinMap.on('click', e => {
+      pinnedLatlng = [e.latlng.lat, e.latlng.lng];
+      if (pinMarker) pinMap.removeLayer(pinMarker);
+      pinMarker = L.marker(pinnedLatlng, { draggable: true }).addTo(pinMap);
+      pinMarker.on('dragend', e => { pinnedLatlng = [e.target.getLatLng().lat, e.target.getLatLng().lng]; });
+    });
+  }
 
-    if (isNaN(lat) || isNaN(lng)) return null;
-    return [parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6))];
-  } catch(e) { return null; }
+  pinMap.setView([lat, lng], 17);
+  if (pinMarker) pinMap.removeLayer(pinMarker);
+  pinMarker = L.marker([lat, lng], { draggable: true }).addTo(pinMap);
+  pinMarker.on('dragend', e => { pinnedLatlng = [e.target.getLatLng().lat, e.target.getLatLng().lng]; });
+  setTimeout(() => pinMap.invalidateSize(), 100);
 }
 
 // GoogleマップURLから座標を抽出
@@ -532,6 +550,9 @@ function renderLogsMapMarkers() {
 function openSpotModal(spotId) {
   editingSpotId = spotId;
   pinPhotos = [];
+  geocodedLatlng = null;
+  pinnedLatlng = null;
+  if (pinMarker && pinMap) { pinMap.removeLayer(pinMarker); pinMarker = null; }
 
   // Build category UI
   renderCategoryGrid(spotId ? (spots.find(s => s.id === spotId)?.category || 'other') : 'other');
@@ -547,12 +568,16 @@ function openSpotModal(spotId) {
     document.getElementById('spot-gmap').value = s.gmapUrl || '';
     pinPhotos = s.photos ? [...s.photos] : (s.photo ? [s.photo] : []);
     renderPhotoThumbs();
+    if (s.latlng) { pinnedLatlng = s.latlng; geocodedLatlng = s.latlng; }
+    if (s.latlng) { document.getElementById('pin-map-block').style.display = 'block'; setTimeout(() => showPinMap(s.latlng[0], s.latlng[1]), 100); }
   } else {
     document.getElementById('spot-modal-title').textContent = '🏪 スポットを記録';
     document.getElementById('spot-name').value = '';
     document.getElementById('spot-comment').value = '';
     document.getElementById('spot-gmap').value = '';
-    document.getElementById('spot-pluscode').value = '';
+    document.getElementById('spot-address').value = '';
+    document.getElementById('geocode-status').style.display = 'none';
+    document.getElementById('pin-map-block').style.display = 'none';
     document.getElementById('spot-photo-input').value = '';
     renderPhotoThumbs();
     // 位置取得
@@ -658,18 +683,17 @@ async function saveSpot() {
   const gmapUrl = document.getElementById('spot-gmap').value.trim();
   const flags = getSelectedFlags();
   const category = getSelectedCategory();
-  const plusCode = document.getElementById('spot-pluscode').value.trim();
+  const address = document.getElementById('spot-address').value.trim();
 
-  // 座標の優先順位: GoogleマップURL > Plus Code > 現在地
+  // 座標の優先順位: ピンマップ調整済み > GoogleマップURL > geocode結果 > 現在地
   const urlLatlng = extractLatLngFromGmapUrl(gmapUrl);
-  const plusLatlng = plusCode ? decodePlusCode(plusCode) : null;
-  const resolvedLatlng = urlLatlng || plusLatlng || currentPos;
+  const resolvedLatlng = pinnedLatlng || urlLatlng || geocodedLatlng || currentPos;
 
   if (editingSpotId) {
     const s = spots.find(x => x.id === editingSpotId);
     if (s) {
       s.name = name; s.comment = comment; s.gmapUrl = gmapUrl;
-      s.plusCode = plusCode; s.flags = flags; s.category = category;
+      s.address = address; s.flags = flags; s.category = category;
       if (resolvedLatlng) s.latlng = resolvedLatlng;
       if (pinPhotos.length > 0) s.photos = [...pinPhotos];
     }
@@ -677,7 +701,7 @@ async function saveSpot() {
     showToast(`${name} を更新しました`);
   } else {
     const latlng = resolvedLatlng;
-    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, plusCode, latlng };
+    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, address, latlng };
     spots.unshift(spot);
     await upsertSpotToSheet(spot);
     // ホームマップにアイコン追加
