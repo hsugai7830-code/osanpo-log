@@ -863,7 +863,7 @@ function bindLongPress(el, fn) {
 //  Google Sheets
 // ============================================================
 async function upsertSpotToSheet(spot) {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') return;
+  if (GAS_URL === 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec') return;
   try {
     showLoading('保存中...');
     await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'upsertSpot', spot: { ...spot, photo: spot.photo || '' } }) });
@@ -872,7 +872,7 @@ async function upsertSpotToSheet(spot) {
 }
 
 async function deleteSpotFromSheet(id) {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') return;
+  if (GAS_URL === 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec') return;
   try {
     showLoading('削除中...');
     await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteSpot', id }) });
@@ -881,14 +881,14 @@ async function deleteSpotFromSheet(id) {
 }
 
 async function saveDayToSheet(dayStr) {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') return;
+  if (GAS_URL === 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec') return;
   try {
     await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'saveDay', dayStr, steps: days[dayStr]?.steps || 0 }) });
   } catch (e) {}
 }
 
 async function deleteDayFromSheet(dayStr) {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') return;
+  if (GAS_URL === 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec') return;
   try {
     await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteDay', dayStr }) });
   } catch (e) {}
