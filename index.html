@@ -137,6 +137,12 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 .form-input:focus, .form-textarea:focus { border-color: var(--sage); }
 .form-textarea { resize: none; min-height: 80px; }
 
+/* Category grid */
+.category-grid { display: flex; gap: 7px; flex-wrap: wrap; }
+.cat-opt { padding: 8px 13px; border: 1.5px solid var(--sand); border-radius: 20px; background: white; font-family: 'Zen Maru Gothic', sans-serif; font-size: 13px; cursor: pointer; color: var(--mid); transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
+.cat-opt:active { transform: scale(0.96); }
+.cat-opt.selected { background: var(--sage-pale); border-color: var(--sage-light); color: var(--sage); font-weight: 700; }
+
 /* Flags grid */
 .flags-grid { display: flex; flex-wrap: wrap; gap: 7px; }
 .flag-opt { padding: 8px 13px; border: 1.5px solid var(--sand); border-radius: 20px; background: white; font-family: 'Zen Maru Gothic', sans-serif; font-size: 12px; cursor: pointer; color: var(--mid); transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
@@ -149,7 +155,10 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 /* Photo */
 .photo-label { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; border: 1.5px dashed var(--sand); border-radius: 14px; background: var(--cream); color: var(--mid); font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .photo-label:active { background: var(--sand-light); }
-.photo-prev { width: 100%; max-height: 160px; object-fit: cover; border-radius: 12px; display: none; margin-top: 8px; }
+.photo-thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.photo-thumb-wrap { position: relative; width: 80px; height: 80px; }
+.photo-thumb { width: 80px; height: 80px; object-fit: cover; border-radius: 10px; display: block; }
+.photo-thumb-del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; background: var(--terra); color: white; border: none; border-radius: 50%; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
 
 /* Buttons */
 .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
@@ -253,6 +262,10 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
       <input class="form-input" id="spot-name" placeholder="例）〇〇カフェ" autocomplete="off"/>
     </div>
     <div class="form-block">
+      <label class="form-label">カテゴリ</label>
+      <div class="category-grid" id="category-grid"></div>
+    </div>
+    <div class="form-block">
       <label class="form-label">感想・メモ</label>
       <textarea class="form-textarea" id="spot-comment" placeholder="コーヒーがおいしかった、など"></textarea>
     </div>
@@ -261,12 +274,12 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
       <div class="flags-grid" id="flags-grid"></div>
     </div>
     <div class="form-block">
-      <label class="form-label">写真（任意）</label>
-      <label class="photo-label">
-        📷 写真を選ぶ
-        <input type="file" accept="image/*" capture="environment" id="spot-photo-input" style="display:none" onchange="handlePhoto(event)"/>
+      <label class="form-label">写真（最大3枚）</label>
+      <label class="photo-label" id="photo-add-btn">
+        📷 写真を追加
+        <input type="file" accept="image/*" id="spot-photo-input" style="display:none" onchange="handlePhoto(event)"/>
       </label>
-      <img class="photo-prev" id="spot-photo-prev"/>
+      <div class="photo-thumbs" id="photo-thumbs"></div>
     </div>
     <div class="form-block">
       <label class="form-label">GoogleマップURL（任意）</label>
@@ -337,8 +350,38 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 // ============================================================
 //  CONFIG
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyOoXghMlkFc4LA2i3FJEMF1f2bKJtPKVYeocSQlyp-zHzl6-U0MW2P8Qy1iAR2zzkOoA/exec';
+const GAS_URL = 'YOUR_GAS_URL_HERE';
 const STEPS_GOAL = 20000;
+
+// ============================================================
+//  Categories
+// ============================================================
+const CATEGORIES = [
+  { id: 'cafe',    label: 'カフェ',  emoji: '☕' },
+  { id: 'food',    label: 'ごはん',  emoji: '🍽' },
+  { id: 'shop',    label: 'お店',    emoji: '🛍' },
+  { id: 'nature',  label: '自然',    emoji: '🌿' },
+  { id: 'other',   label: 'その他',  emoji: '📍' },
+];
+
+function categoryEmoji(catId) {
+  return CATEGORIES.find(c => c.id === catId)?.emoji || '📍';
+}
+
+// GoogleマップURLから座標を抽出
+function extractLatLngFromGmapUrl(url) {
+  if (!url) return null;
+  // @lat,lng,zoom パターン
+  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  // ?q=lat,lng パターン
+  m = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  // ll=lat,lng パターン
+  m = url.match(/ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m) return [parseFloat(m[1]), parseFloat(m[2])];
+  return null;
+}
 
 // ============================================================
 //  Default flags
@@ -349,14 +392,14 @@ const DEFAULT_FLAGS = ['リピあり','カードOK','PayPayOK','駐車場あり'
 //  State
 // ============================================================
 let map, logsMap;
-let spots = [];        // { id, date, name, comment, flags, photo, gmapUrl, latlng }
+let spots = [];        // { id, date, name, category, comment, flags, photo, gmapUrl, latlng }
 let days = {};         // { 'YYYY-MM-DD': { steps } }
 let customFlags = [];  // user-defined flag strings
 let currentPos = null;
 let currentMarker = null;
 let logsView = 'list';
 let editingSpotId = null;
-let pinPhotoData = null;
+let pinPhotos = []; // max 3
 let deleteType = null; // 'spot' | 'day'
 let deleteTargetId = null;
 let stepsTargetDay = null;
@@ -401,9 +444,9 @@ function renderLogsMapMarkers() {
   spots.forEach(s => {
     if (!s.latlng) return;
     bounds.push(s.latlng);
-    const hasRepeat = s.flags && s.flags.includes('リピあり');
+    const emoji = categoryEmoji(s.category);
     const icon = L.divIcon({
-      html: `<div style="background:${hasRepeat ? '#7a9470' : '#bf6e52'};color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;border:2.5px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.25)">🏪</div>`,
+      html: `<div style="background:#7a9470;color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;border:2.5px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.25)">${emoji}</div>`,
       className: '', iconSize: [28, 28], iconAnchor: [14, 14],
     });
     L.marker(s.latlng, { icon }).addTo(logsMap)
@@ -421,7 +464,10 @@ function renderLogsMapMarkers() {
 // ============================================================
 function openSpotModal(spotId) {
   editingSpotId = spotId;
-  pinPhotoData = null;
+  pinPhotos = [];
+
+  // Build category UI
+  renderCategoryGrid(spotId ? (spots.find(s => s.id === spotId)?.category || 'other') : 'other');
 
   // Build flags UI
   renderFlagsGrid(spotId ? (spots.find(s => s.id === spotId)?.flags || []) : []);
@@ -432,15 +478,15 @@ function openSpotModal(spotId) {
     document.getElementById('spot-name').value = s.name || '';
     document.getElementById('spot-comment').value = s.comment || '';
     document.getElementById('spot-gmap').value = s.gmapUrl || '';
-    if (s.photo) { const p = document.getElementById('spot-photo-prev'); p.src = s.photo; p.style.display = 'block'; pinPhotoData = s.photo; }
-    else { document.getElementById('spot-photo-prev').style.display = 'none'; }
+    pinPhotos = s.photos ? [...s.photos] : (s.photo ? [s.photo] : []);
+    renderPhotoThumbs();
   } else {
     document.getElementById('spot-modal-title').textContent = '🏪 スポットを記録';
     document.getElementById('spot-name').value = '';
     document.getElementById('spot-comment').value = '';
     document.getElementById('spot-gmap').value = '';
-    document.getElementById('spot-photo-prev').style.display = 'none';
     document.getElementById('spot-photo-input').value = '';
+    renderPhotoThumbs();
     // 位置取得
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(pos => {
@@ -454,6 +500,27 @@ function openSpotModal(spotId) {
 }
 
 function closeSpotModal() { document.getElementById('spot-overlay').classList.remove('open'); }
+
+function renderCategoryGrid(selectedCat) {
+  const grid = document.getElementById('category-grid');
+  grid.innerHTML = '';
+  CATEGORIES.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'cat-opt' + (c.id === selectedCat ? ' selected' : '');
+    el.textContent = c.emoji + ' ' + c.label;
+    el.dataset.catId = c.id;
+    el.onclick = () => {
+      grid.querySelectorAll('.cat-opt').forEach(x => x.classList.remove('selected'));
+      el.classList.add('selected');
+    };
+    grid.appendChild(el);
+  });
+}
+
+function getSelectedCategory() {
+  const sel = document.querySelector('#category-grid .cat-opt.selected');
+  return sel ? sel.dataset.catId : 'other';
+}
 
 function renderFlagsGrid(selectedFlags) {
   const grid = document.getElementById('flags-grid');
@@ -480,6 +547,7 @@ function getSelectedFlags() {
 
 function handlePhoto(e) {
   const file = e.target.files[0]; if (!file) return;
+  if (pinPhotos.length >= 3) { showToast('写真は最大3枚です'); return; }
   const reader = new FileReader();
   reader.onload = ev => {
     const img = new Image();
@@ -489,13 +557,31 @@ function handlePhoto(e) {
       if (w > MAX || h > MAX) { if (w > h) { h = Math.round(h * MAX / w); w = MAX; } else { w = Math.round(w * MAX / h); h = MAX; } }
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      pinPhotoData = canvas.toDataURL('image/jpeg', 0.75);
-      const prev = document.getElementById('spot-photo-prev');
-      prev.src = pinPhotoData; prev.style.display = 'block';
+      pinPhotos.push(canvas.toDataURL('image/jpeg', 0.75));
+      renderPhotoThumbs();
+      document.getElementById('spot-photo-input').value = '';
     };
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function renderPhotoThumbs() {
+  const wrap = document.getElementById('photo-thumbs');
+  const btn = document.getElementById('photo-add-btn');
+  wrap.innerHTML = '';
+  pinPhotos.forEach((p, i) => {
+    const w = document.createElement('div');
+    w.className = 'photo-thumb-wrap';
+    w.innerHTML = `<img src="${p}" class="photo-thumb"/><button class="photo-thumb-del" onclick="removePhoto(${i})">×</button>`;
+    wrap.appendChild(w);
+  });
+  btn.style.display = pinPhotos.length >= 3 ? 'none' : 'flex';
+}
+
+function removePhoto(idx) {
+  pinPhotos.splice(idx, 1);
+  renderPhotoThumbs();
 }
 
 async function saveSpot() {
@@ -503,26 +589,37 @@ async function saveSpot() {
   const comment = document.getElementById('spot-comment').value.trim();
   const gmapUrl = document.getElementById('spot-gmap').value.trim();
   const flags = getSelectedFlags();
+  const category = getSelectedCategory();
+
+  // URLから座標を抽出、なければ現在地
+  const urlLatlng = extractLatLngFromGmapUrl(gmapUrl);
 
   if (editingSpotId) {
     const s = spots.find(x => x.id === editingSpotId);
-    if (s) { s.name = name; s.comment = comment; s.gmapUrl = gmapUrl; s.flags = flags; if (pinPhotoData) s.photo = pinPhotoData; }
+    if (s) {
+      s.name = name; s.comment = comment; s.gmapUrl = gmapUrl;
+      s.flags = flags; s.category = category;
+      if (urlLatlng) s.latlng = urlLatlng;
+      if (pinPhotos.length > 0) s.photos = [...pinPhotos];
+    }
     await upsertSpotToSheet(s);
     showToast(`${name} を更新しました`);
   } else {
-    const spot = { id: Date.now(), date: todayStr(), name, comment, flags, photo: pinPhotoData || '', gmapUrl, latlng: currentPos };
+    const latlng = urlLatlng || currentPos;
+    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, latlng };
     spots.unshift(spot);
     await upsertSpotToSheet(spot);
-    // map marker
-    if (currentPos) {
-      const hasRepeat = flags.includes('リピあり');
+    // ホームマップにアイコン追加
+    if (latlng) {
+      const emoji = categoryEmoji(category);
       const icon = L.divIcon({
-        html: `<div style="background:${hasRepeat ? '#7a9470' : '#bf6e52'};color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25)">🏪</div>`,
+        html: `<div style="background:#7a9470;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.25)">${emoji}</div>`,
         className: '', iconSize: [30, 30], iconAnchor: [15, 15],
       });
-      L.marker(currentPos, { icon }).addTo(map).bindPopup(`<b>${name}</b>${comment ? '<br>' + comment : ''}`);
+      L.marker(latlng, { icon }).addTo(map).bindPopup(`<b>${name}</b>${comment ? '<br>' + comment : ''}`);
+      if (urlLatlng) map.setView(urlLatlng, 16);
     }
-    showToast(`${name} を記録しました 🏪`);
+    showToast(`${name} を記録しました ${categoryEmoji(category)}`);
   }
   closeSpotModal();
   if (detailDay) renderDetailView(detailDay);
@@ -717,11 +814,12 @@ function renderDetailView(dayStr) {
     ).join('');
     const gmapHtml = s.gmapUrl ? `<a href="${s.gmapUrl}" target="_blank" rel="noopener" class="spot-gmap">📍 Googleマップで開く</a>` :
       (s.latlng ? `<a href="https://maps.google.com/?q=${s.latlng[0]},${s.latlng[1]}" target="_blank" rel="noopener" class="spot-gmap">📍 Googleマップで開く</a>` : '');
+    const catEmoji = categoryEmoji(s.category);
     return `
       <div class="spot-detail-card">
         <div class="spot-detail-top">
           <div class="spot-name-row">
-            <div class="spot-name">${s.name}</div>
+            <div class="spot-name">${catEmoji} ${s.name}</div>
             <div class="spot-actions">
               <button class="spot-action-btn" onclick="openSpotModal(${s.id})">編集</button>
               <button class="spot-action-btn del" onclick="openDeleteSpot(${s.id})">削除</button>
@@ -731,7 +829,7 @@ function renderDetailView(dayStr) {
           ${s.comment ? `<div class="spot-comment">${s.comment}</div>` : ''}
           ${gmapHtml}
         </div>
-        ${s.photo ? `<img src="${s.photo}" class="spot-photo"/>` : ''}
+        ${(s.photos && s.photos.length > 0) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 12px">${s.photos.map(p=>`<img src="${p}" style="width:80px;height:80px;object-fit:cover;border-radius:8px"/>`).join('')}</div>` : (s.photo ? `<img src="${s.photo}" class="spot-photo"/>` : '')}
       </div>`;
   }).join('');
 }
@@ -797,7 +895,7 @@ async function deleteDayFromSheet(dayStr) {
 }
 
 async function syncAll() {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') { showToast('GAS URLが未設定です'); return; }
+  if (GAS_URL === 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec') { showToast('GAS URLが未設定です'); return; }
   try {
     document.getElementById('sync-btn').classList.add('syncing');
     document.getElementById('sync-label').textContent = '同期中';
