@@ -285,6 +285,11 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
       <label class="form-label">GoogleマップURL（任意）</label>
       <input class="form-input" id="spot-gmap" placeholder="https://maps.google.com/..." autocomplete="off" inputmode="url"/>
     </div>
+    <div class="form-block">
+      <label class="form-label">Plus Code（任意）</label>
+      <input class="form-input" id="spot-pluscode" placeholder="例）8Q7X+MP 東京都" autocomplete="off"/>
+      <div style="font-size:11px;color:var(--mid);margin-top:5px">Googleマップのお店ページ→「共有」→「Plus Codeをコピー」</div>
+    </div>
     <div class="btn-row">
       <button class="btn-cancel" onclick="closeSpotModal()">キャンセル</button>
       <button class="btn-ok" onclick="saveSpot()">保存する</button>
@@ -350,7 +355,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 // ============================================================
 //  CONFIG
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz3sObdWMDO3V5DIBF3bjZKkpPwA3e-jy1KyCyZlXxWwiCzphor-fAmc3mM_ICINQW7UQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzV-u6xlGhcWABYQQyx3PUKfXSF1n6pmyJBsyBEpDpjZhivwMQxxKOks76yUzBA7IEYdw/exec';
 const STEPS_GOAL = 20000;
 
 // ============================================================
@@ -366,6 +371,68 @@ const CATEGORIES = [
 
 function categoryEmoji(catId) {
   return CATEGORIES.find(c => c.id === catId)?.emoji || '📍';
+}
+
+// Plus Code → 座標変換
+// Open Location Code (Plus Code) のシンプルなデコーダー
+function decodePlusCode(code) {
+  try {
+    // "8Q7XMPF5+3J 東京都" → "8Q7XMPF5+3J" を抽出
+    const match = code.trim().match(/([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3})/i);
+    if (!match) return null;
+    const clean = match[1].toUpperCase();
+
+    const ALPHABET = '23456789CFGHJMPQRVWX';
+    const ENCODING_BASE = 20;
+    const PAIR_CODE_LENGTH = 10;
+    const CODE_ALPHABET = ALPHABET;
+
+    // + の位置を確認
+    const plusPos = clean.indexOf('+');
+    if (plusPos < 0) return null;
+
+    const fullCode = plusPos < 8 ? clean.padEnd(8, '0').replace('+','') + (clean.includes('+') ? clean.slice(plusPos+1) : '') : clean;
+
+    // 正規化：+を除いた文字列で処理
+    const stripped = clean.replace('+', '');
+    const padded = stripped.padEnd(8, '0');
+
+    let lat = -90, lng = -180;
+    let latHi = 90, lngHi = 180;
+
+    // 最初の4文字（ペア）
+    for (let i = 0; i < Math.min(4, Math.floor(padded.length / 2)); i++) {
+      const latChar = padded[i * 2];
+      const lngChar = padded[i * 2 + 1];
+      const latIdx = CODE_ALPHABET.indexOf(latChar);
+      const lngIdx = CODE_ALPHABET.indexOf(lngChar);
+      if (latIdx < 0 || lngIdx < 0) return null;
+
+      const div = Math.pow(ENCODING_BASE, 3 - i);
+      lat += latIdx * div * 180 / Math.pow(ENCODING_BASE, 4);
+      lng += lngIdx * div * 360 / Math.pow(ENCODING_BASE, 4);
+    }
+
+    // グリッド部分（+の後）
+    const suffix = clean.slice(plusPos + 1);
+    if (suffix.length >= 2) {
+      const latDiv = Math.pow(ENCODING_BASE, -1);
+      const lngDiv = Math.pow(ENCODING_BASE, -1);
+      const latIdx = CODE_ALPHABET.indexOf(suffix[0]);
+      const lngIdx = CODE_ALPHABET.indexOf(suffix[1]);
+      if (latIdx >= 0 && lngIdx >= 0) {
+        lat += latIdx * latDiv * 180 / Math.pow(ENCODING_BASE, 4) / ENCODING_BASE;
+        lng += lngIdx * lngDiv * 360 / Math.pow(ENCODING_BASE, 4) / ENCODING_BASE;
+      }
+    }
+
+    // 中心点
+    const latCenter = lat + (latHi - lat) / ENCODING_BASE / ENCODING_BASE;
+    const lngCenter = lng + (lngHi - lng) / ENCODING_BASE / ENCODING_BASE;
+
+    if (isNaN(lat) || isNaN(lng)) return null;
+    return [parseFloat(lat.toFixed(6)), parseFloat(lng.toFixed(6))];
+  } catch(e) { return null; }
 }
 
 // GoogleマップURLから座標を抽出
@@ -485,6 +552,7 @@ function openSpotModal(spotId) {
     document.getElementById('spot-name').value = '';
     document.getElementById('spot-comment').value = '';
     document.getElementById('spot-gmap').value = '';
+    document.getElementById('spot-pluscode').value = '';
     document.getElementById('spot-photo-input').value = '';
     renderPhotoThumbs();
     // 位置取得
@@ -590,23 +658,26 @@ async function saveSpot() {
   const gmapUrl = document.getElementById('spot-gmap').value.trim();
   const flags = getSelectedFlags();
   const category = getSelectedCategory();
+  const plusCode = document.getElementById('spot-pluscode').value.trim();
 
-  // URLから座標を抽出、なければ現在地
+  // 座標の優先順位: GoogleマップURL > Plus Code > 現在地
   const urlLatlng = extractLatLngFromGmapUrl(gmapUrl);
+  const plusLatlng = plusCode ? decodePlusCode(plusCode) : null;
+  const resolvedLatlng = urlLatlng || plusLatlng || currentPos;
 
   if (editingSpotId) {
     const s = spots.find(x => x.id === editingSpotId);
     if (s) {
       s.name = name; s.comment = comment; s.gmapUrl = gmapUrl;
-      s.flags = flags; s.category = category;
-      if (urlLatlng) s.latlng = urlLatlng;
+      s.plusCode = plusCode; s.flags = flags; s.category = category;
+      if (resolvedLatlng) s.latlng = resolvedLatlng;
       if (pinPhotos.length > 0) s.photos = [...pinPhotos];
     }
     await upsertSpotToSheet(s);
     showToast(`${name} を更新しました`);
   } else {
-    const latlng = urlLatlng || currentPos;
-    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, latlng };
+    const latlng = resolvedLatlng;
+    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, plusCode, latlng };
     spots.unshift(spot);
     await upsertSpotToSheet(spot);
     // ホームマップにアイコン追加
@@ -894,20 +965,29 @@ async function deleteDayFromSheet(dayStr) {
   } catch (e) {}
 }
 
-async function syncAll() {
-  if (GAS_URL === 'YOUR_GAS_URL_HERE') { showToast('GAS URLが未設定です'); return; }
+async function syncAll(silent = false) {
+  if (GAS_URL === 'YOUR_GAS_URL_HERE') { if (!silent) showToast('GAS URLが未設定です'); return; }
   try {
     document.getElementById('sync-btn').classList.add('syncing');
     document.getElementById('sync-label').textContent = '同期中';
-    showLoading('データを取得中...');
+    if (!silent) showLoading('データを取得中...');
     const res = await fetch(GAS_URL + '?action=getData');
     const data = await res.json();
-    if (data.spots) spots = data.spots;
-    if (data.days) days = data.days;
+    if (data.spots) spots = data.spots.map(s => ({
+      ...s,
+      date: s.date ? s.date.toString().slice(0, 10) : todayStr(),
+    }));
+    if (data.days) {
+      days = {};
+      Object.entries(data.days).forEach(([k, v]) => {
+        const key = k.toString().slice(0, 10);
+        days[key] = v;
+      });
+    }
     if (data.customFlags) customFlags = data.customFlags;
     renderLogList();
     renderLogsMapMarkers();
-    showToast(`同期完了 🌿`);
+    if (!silent) showToast(`同期完了 🌿`);
   } catch (e) { showToast('同期に失敗しました'); }
   finally {
     hideLoading();
@@ -943,6 +1023,12 @@ function hideLoading() { document.getElementById('loading').classList.remove('sh
 
 // Boot
 initMap();
+// 起動時に自動同期
+window.addEventListener('load', () => {
+  if (GAS_URL !== 'YOUR_GAS_URL_HERE') {
+    setTimeout(() => syncAll(true), 800);
+  }
+});
 </script>
 </body>
 </html>
