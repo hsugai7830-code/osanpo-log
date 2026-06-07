@@ -684,6 +684,7 @@ function removePhoto(idx) {
 
 async function saveSpot() {
   const name = document.getElementById('spot-name').value.trim() || '名前なし';
+  const date = document.getElementById('spot-date').value || todayStr();
   const comment = document.getElementById('spot-comment').value.trim();
   const gmapUrl = document.getElementById('spot-gmap').value.trim();
   const flags = getSelectedFlags();
