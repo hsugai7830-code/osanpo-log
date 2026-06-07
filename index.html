@@ -127,7 +127,9 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 /* OVERLAY / SHEET */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(40,35,30,0.45); z-index: 200; align-items: flex-end; backdrop-filter: blur(2px); }
 .overlay.open { display: flex; }
-.sheet { background: var(--warm-white); border-radius: 24px 24px 0 0; padding: 16px 20px calc(var(--safe-bottom) + 20px); width: 100%; max-height: 92dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; animation: slideUp 0.25s ease-out; }
+.sheet { background: var(--warm-white); border-radius: 24px 24px 0 0; width: 100%; max-height: 92dvh; display: flex; flex-direction: column; animation: slideUp 0.25s ease-out; }
+.sheet-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 20px 8px; }
+.sheet-footer { padding: 8px 20px calc(var(--safe-bottom) + 12px); background: var(--warm-white); border-top: 1px solid var(--sand-light); flex-shrink: 0; position: relative; z-index: 9999; }
 @keyframes slideUp { from { transform: translateY(60px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .sheet-handle { width: 36px; height: 4px; background: var(--sand); border-radius: 2px; margin: 0 auto 16px; }
 .sheet-title { font-family: 'Kaisei Opti', serif; font-size: 18px; text-align: center; margin-bottom: 18px; }
@@ -162,11 +164,11 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 
 /* Buttons */
 .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
-.btn-ok { padding: 14px; background: var(--sage); color: white; border: none; border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+.btn-ok { padding: 14px; background: var(--sage); color: white; border: none; border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.15s; position: relative; z-index: 9999; touch-action: manipulation; }
 .btn-ok:active { transform: scale(0.97); }
-.btn-cancel { padding: 14px; background: white; color: var(--mid); border: 1.5px solid var(--sand); border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; cursor: pointer; }
+.btn-cancel { padding: 14px; background: white; color: var(--mid); border: 1.5px solid var(--sand); border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; cursor: pointer; position: relative; z-index: 9999; touch-action: manipulation; }
 .btn-cancel:active { background: var(--sand-light); }
-.btn-danger { padding: 14px; background: var(--terra-pale); color: var(--terra); border: 1.5px solid var(--terra-light); border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btn-danger { padding: 14px; background: var(--terra-pale); color: var(--terra); border: 1.5px solid var(--terra-light); border-radius: 16px; font-family: 'Zen Maru Gothic', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; position: relative; z-index: 9999; touch-action: manipulation; }
 .btn-danger:active { transform: scale(0.97); }
 .btn-full { grid-column: 1 / -1; }
 
@@ -255,6 +257,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 <!-- SPOT MODAL -->
 <div class="overlay" id="spot-overlay">
   <div class="sheet" id="spot-sheet">
+    <div class="sheet-scroll">
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="spot-modal-title">🏪 スポットを記録</div>
     <div class="form-block">
@@ -263,8 +266,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
     </div>
     <div class="form-block">
       <label class="form-label">日付</label>
-      <input class="form-input" type="text" id="spot-date" placeholder="例）2026-06-06" autocomplete="off" inputmode="numeric" maxlength="10"/>
-      <div style="font-size:11px;color:var(--mid);margin-top:5px">YYYY-MM-DD形式で入力（例：2026-06-06）</div>
+      <input class="form-input" type="date" id="spot-date" autocomplete="off"/>
     </div>
     <div class="form-block">
       <label class="form-label">カテゴリ</label>
@@ -301,12 +303,15 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
     </div>
     <div class="form-block" id="pin-map-block" style="display:none">
       <label class="form-label">📍 地図でピンを微調整（任意）</label>
-      <div id="pin-map" style="height:200px;border-radius:14px;overflow:hidden;border:1.5px solid var(--sand)"></div>
+      <div id="pin-map" style="height:200px;border-radius:14px;overflow:hidden;border:1.5px solid var(--sand);position:relative;z-index:1"></div>
       <div style="font-size:11px;color:var(--mid);margin-top:5px">地図をタップして正確な位置に調整できます</div>
     </div>
-    <div class="btn-row">
-      <button class="btn-cancel" onclick="closeSpotModal()">キャンセル</button>
-      <button class="btn-ok" onclick="saveSpot()">保存する</button>
+    </div><!-- /sheet-scroll -->
+    <div class="sheet-footer">
+      <div class="btn-row">
+        <button class="btn-cancel" id="spot-cancel-btn">キャンセル</button>
+        <button class="btn-ok" id="spot-save-btn">保存する</button>
+      </div>
     </div>
   </div>
 </div>
@@ -314,6 +319,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 <!-- STEPS MODAL -->
 <div class="overlay" id="steps-overlay">
   <div class="sheet">
+    <div class="sheet-scroll">
     <div class="sheet-handle"></div>
     <div class="sheet-title">👟 歩数を記録</div>
     <div class="steps-display" id="steps-display">
@@ -323,9 +329,12 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
     <div class="form-block" style="margin-top:12px">
       <input class="steps-number-input" type="number" id="steps-input" placeholder="0" min="0" max="99999" inputmode="numeric" oninput="updateStepsPreview()"/>
     </div>
-    <div class="btn-row">
-      <button class="btn-cancel" onclick="closeStepsModal()">キャンセル</button>
-      <button class="btn-ok" onclick="saveSteps()">保存する</button>
+    </div><!-- /sheet-scroll -->
+    <div class="sheet-footer">
+      <div class="btn-row">
+        <button class="btn-cancel" onclick="closeStepsModal()">キャンセル</button>
+        <button class="btn-ok" onclick="saveSteps()">保存する</button>
+      </div>
     </div>
   </div>
 </div>
@@ -333,15 +342,19 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 <!-- ADD CUSTOM FLAG MODAL -->
 <div class="overlay" id="custom-flag-overlay">
   <div class="sheet">
+    <div class="sheet-scroll">
     <div class="sheet-handle"></div>
     <div class="sheet-title">✏️ フラグを追加</div>
     <div class="form-block">
       <label class="form-label">フラグの名前</label>
       <input class="form-input" id="custom-flag-input" placeholder="例）テイクアウトOK" autocomplete="off"/>
     </div>
-    <div class="btn-row">
-      <button class="btn-cancel" onclick="closeCustomFlagModal()">キャンセル</button>
-      <button class="btn-ok" onclick="saveCustomFlag()">追加する</button>
+    </div><!-- /sheet-scroll -->
+    <div class="sheet-footer">
+      <div class="btn-row">
+        <button class="btn-cancel" onclick="closeCustomFlagModal()">キャンセル</button>
+        <button class="btn-ok" onclick="saveCustomFlag()">追加する</button>
+      </div>
     </div>
   </div>
 </div>
@@ -349,15 +362,19 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 <!-- DELETE CONFIRM MODAL -->
 <div class="overlay" id="delete-overlay">
   <div class="sheet">
+    <div class="sheet-scroll">
     <div class="sheet-handle"></div>
     <div class="sheet-title">🗑️ 削除の確認</div>
     <div class="delete-info">
       <div class="delete-name" id="delete-target-name"></div>
       <div id="delete-target-desc"></div>
     </div>
-    <div class="btn-row" style="margin-top:16px">
-      <button class="btn-cancel" onclick="closeDeleteModal()">キャンセル</button>
-      <button class="btn-danger" onclick="executeDelete()">削除する</button>
+    </div><!-- /sheet-scroll -->
+    <div class="sheet-footer">
+      <div class="btn-row">
+        <button class="btn-cancel" onclick="closeDeleteModal()">キャンセル</button>
+        <button class="btn-danger" onclick="executeDelete()">削除する</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1066,6 +1083,12 @@ function hideLoading() { document.getElementById('loading').classList.remove('sh
 
 // Boot
 initMap();
+
+// ボタンのイベントをJSで確実に登録
+document.getElementById('spot-save-btn').addEventListener('click', saveSpot, { passive: false });
+document.getElementById('spot-save-btn').addEventListener('touchend', function(e) { e.preventDefault(); saveSpot(); }, { passive: false });
+document.getElementById('spot-cancel-btn').addEventListener('click', closeSpotModal, { passive: false });
+document.getElementById('spot-cancel-btn').addEventListener('touchend', function(e) { e.preventDefault(); closeSpotModal(); }, { passive: false });
 // 起動時に自動同期
 window.addEventListener('load', () => {
   if (GAS_URL !== 'YOUR_GAS_URL_HERE') {
