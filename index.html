@@ -262,6 +262,10 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
       <input class="form-input" id="spot-name" placeholder="例）〇〇カフェ" autocomplete="off"/>
     </div>
     <div class="form-block">
+      <label class="form-label">日付</label>
+      <input class="form-input" type="date" id="spot-date" autocomplete="off"/>
+    </div>
+    <div class="form-block">
       <label class="form-label">カテゴリ</label>
       <div class="category-grid" id="category-grid"></div>
     </div>
@@ -364,7 +368,7 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
 // ============================================================
 //  CONFIG
 // ============================================================
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzU5Wy8diN2HgGE9SnXL_wU3w0HmxirGZv_OfWlx4ikHVnRhL2KWVrLyzWaIHXwyk-K/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyXHhy_DVNY-d97qHrfT6-fEeappj9a8eE3K8CIzF3jW8gVmrWXGzxq_y2eohFeUAHyAQ/exec';
 const STEPS_GOAL = 20000;
 
 // ============================================================
@@ -573,6 +577,7 @@ function openSpotModal(spotId) {
   } else {
     document.getElementById('spot-modal-title').textContent = '🏪 スポットを記録';
     document.getElementById('spot-name').value = '';
+    document.getElementById('spot-date').value = todayStr();
     document.getElementById('spot-comment').value = '';
     document.getElementById('spot-gmap').value = '';
     document.getElementById('spot-address').value = '';
@@ -692,7 +697,7 @@ async function saveSpot() {
   if (editingSpotId) {
     const s = spots.find(x => x.id === editingSpotId);
     if (s) {
-      s.name = name; s.comment = comment; s.gmapUrl = gmapUrl;
+      s.name = name; s.date = date; s.comment = comment; s.gmapUrl = gmapUrl;
       s.address = address; s.flags = flags; s.category = category;
       if (resolvedLatlng) s.latlng = resolvedLatlng;
       if (pinPhotos.length > 0) s.photos = [...pinPhotos];
@@ -701,7 +706,7 @@ async function saveSpot() {
     showToast(`${name} を更新しました`);
   } else {
     const latlng = resolvedLatlng;
-    const spot = { id: Date.now(), date: todayStr(), name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, address, latlng };
+    const spot = { id: Date.now(), date, name, category, comment, flags, photos: [...pinPhotos], photo: '', gmapUrl, address, latlng };
     spots.unshift(spot);
     await upsertSpotToSheet(spot);
     // ホームマップにアイコン追加
@@ -997,10 +1002,18 @@ async function syncAll(silent = false) {
     if (!silent) showLoading('データを取得中...');
     const res = await fetch(GAS_URL + '?action=getData');
     const data = await res.json();
-    if (data.spots) spots = data.spots.map(s => ({
-      ...s,
-      date: s.date ? s.date.toString().slice(0, 10) : todayStr(),
-    }));
+    if (data.spots) spots = data.spots.map(s => {
+      let date = s.date ? s.date.toString().replace(/^'/, '') : '';
+      // ISO形式のタイムスタンプの場合、日本時間に変換
+      if (date.includes('T') || date.includes(' ')) {
+        const d = new Date(date);
+        const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+        date = jst.toISOString().slice(0, 10);
+      } else {
+        date = date.slice(0, 10);
+      }
+      return { ...s, date: date || todayStr() };
+    });
     if (data.days) {
       days = {};
       Object.entries(data.days).forEach(([k, v]) => {
@@ -1038,7 +1051,12 @@ function groupByDay() {
   spots.forEach(s => { if (!g[s.date]) g[s.date] = []; g[s.date].push(s); });
   return g;
 }
-function todayStr() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayStr() {
+  // 日本時間（UTC+9）で今日の日付を返す
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
 function fmtDate(d) { return `${d.getMonth()+1}/${d.getDate()}`; }
 function fmtDateFull(d) { return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} (${['日','月','火','水','木','金','土'][d.getDay()]})`; }
 function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2600); }
