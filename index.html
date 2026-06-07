@@ -263,7 +263,8 @@ html, body { height: 100%; height: -webkit-fill-available; overflow: hidden; fon
     </div>
     <div class="form-block">
       <label class="form-label">日付</label>
-      <input class="form-input" type="date" id="spot-date" autocomplete="off"/>
+      <input class="form-input" type="text" id="spot-date" placeholder="例）2026-06-06" autocomplete="off" inputmode="numeric" maxlength="10"/>
+      <div style="font-size:11px;color:var(--mid);margin-top:5px">YYYY-MM-DD形式で入力（例：2026-06-06）</div>
     </div>
     <div class="form-block">
       <label class="form-label">カテゴリ</label>
